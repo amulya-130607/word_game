@@ -65,6 +65,13 @@ h1 span {
   flex-direction: column;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(5px);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.hud-box.bump {
+  transform: scale(1.15);
+  box-shadow: 0 6px 20px rgba(0, 240, 255, 0.8);
+  border-color: rgba(0, 240, 255, 0.8);
 }
 
 .hud-label {
@@ -103,6 +110,24 @@ canvas {
   cursor: ew-resize;
 }
 
+@keyframes shake {
+  0% { transform: translate(0, 0); }
+  20% { transform: translate(-8px, -5px) rotate(-1deg); }
+  40% { transform: translate(6px, 8px) rotate(1deg); }
+  60% { transform: translate(-5px, 6px) rotate(-1deg); }
+  80% { transform: translate(8px, -6px) rotate(1deg); }
+  100% { transform: translate(0, 0); }
+}
+
+.game-container.shake {
+  animation: shake 0.4s cubic-bezier(.36,.07,.19,.97) both;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; backdrop-filter: blur(0px); }
+  to { opacity: 1; backdrop-filter: blur(4px); }
+}
+
 .overlay {
   position: absolute;
   top: 0;
@@ -117,6 +142,7 @@ canvas {
   align-items: center;
   z-index: 10;
   border-radius: 10px;
+  animation: fadeIn 0.4s ease-out;
 }
 
 .overlay.hidden {
@@ -135,8 +161,52 @@ canvas {
 .overlay p {
   font-size: 18px;
   color: #ddd;
-  margin-bottom: 30px;
+  margin-bottom: 20px;
   text-align: center;
+}
+
+.difficulty-section {
+  margin-bottom: 25px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.difficulty-section label {
+  font-family: 'Orbitron', sans-serif;
+  color: #00f0ff;
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+
+.difficulty-section select {
+  font-family: 'Orbitron', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  background: rgba(5, 11, 20, 0.8);
+  color: #fff;
+  border: 1px solid #00f0ff;
+  padding: 8px 15px;
+  border-radius: 5px;
+  outline: none;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+}
+
+.difficulty-section select:focus {
+  box-shadow: 0 0 15px rgba(0, 240, 255, 0.6);
+}
+
+.difficulty-section select option {
+  background: #050b14;
+  color: #fff;
+}
+
+@keyframes pulseGlow {
+  0% { box-shadow: 0 0 15px rgba(0, 240, 255, 0.5); transform: scale(1); }
+  50% { box-shadow: 0 0 25px rgba(0, 240, 255, 1); transform: scale(1.05); }
+  100% { box-shadow: 0 0 15px rgba(0, 240, 255, 0.5); transform: scale(1); }
 }
 
 button {
@@ -153,11 +223,13 @@ button {
   transition: all 0.2s ease;
   text-transform: uppercase;
   letter-spacing: 1px;
+  animation: pulseGlow 2s infinite;
 }
 
 button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 0 25px rgba(0, 240, 255, 0.8);
+  animation: none;
+  transform: translateY(-2px) scale(1.1);
+  box-shadow: 0 0 35px rgba(0, 240, 255, 0.9);
 }
 
 button:active {

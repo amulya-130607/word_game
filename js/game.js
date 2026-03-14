@@ -11,6 +11,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const gameOverScreen = document.getElementById('game-over-screen');
   const finalScoreEl = document.getElementById('final-score');
 
+  const diffSelect = document.getElementById('difficulty');
+  const highScoreEl = document.getElementById('high-score');
+  const hiScoreBox = document.getElementById('hi-score-box');
+  let highScore = localStorage.getItem('neon_high_score') || 0;
+  if (highScore > 0 && hiScoreBox) {
+    hiScoreBox.style.display = 'flex';
+    highScoreEl.innerText = highScore;
+  }
+
   // Audio context for sound effects
   const AudioContext = window.AudioContext || window.webkitAudioContext;
   let audioCtx;
@@ -58,6 +67,43 @@ document.addEventListener('DOMContentLoaded', () => {
     osc.stop(audioCtx.currentTime + 0.5);
   }
 
+  function playShieldPickupSound() {
+    playTone(600, 'square', 0.1, 0.1);
+    setTimeout(() => playTone(800, 'square', 0.15, 0.1), 100);
+  }
+
+  function playShieldBreakSound() {
+    if (!audioCtx) return;
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(100, audioCtx.currentTime);
+    osc.frequency.linearRampToValueAtTime(50, audioCtx.currentTime + 0.3);
+    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.3);
+  }
+
+  function playSpeedUpSound() {
+    playTone(400, 'sine', 0.1, 0.1);
+    setTimeout(() => playTone(500, 'sine', 0.1, 0.1), 100);
+    setTimeout(() => playTone(600, 'sine', 0.1, 0.1), 200);
+    setTimeout(() => playTone(800, 'sine', 0.3, 0.1), 300);
+  }
+
+  function bumpElement(el) {
+    if (!el) return;
+    const box = el.closest ? el.closest('.hud-box') : el.parentElement;
+    if (!box) return;
+    box.classList.remove('bump');
+    void box.offsetWidth;
+    box.classList.add('bump');
+    setTimeout(() => box.classList.remove('bump'), 150);
+  }
+
   let animationId;
   let isGameOver = false;
   let isPlaying = false;
@@ -69,6 +115,11 @@ document.addEventListener('DOMContentLoaded', () => {
   let roadOffset = 0;
   let roadOffsetTotal = 0;
   let frameCount = 0;
+  let hasShield = false;
+
+  // Difficulty modifiers
+  let difficultySpeedIncrement = 0.5;
+  let difficultySpawnRateMod = 1.0;
 
   // Curve state
   let currentCurveAmp = 0;
@@ -143,6 +194,16 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.shadowBlur = 15;
         ctx.fillRect(2, 0, 8, 4);
         ctx.fillRect(this.width - 10, 0, 8, 4);
+        
+        if (hasShield) {
+          ctx.strokeStyle = '#0088ff';
+          ctx.shadowColor = '#0088ff';
+          ctx.shadowBlur = 15;
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.ellipse(this.width/2, this.height/2, this.width/2 + 8, this.height/2 + 8, 0, 0, Math.PI*2);
+          ctx.stroke();
+        }
       }
 
       ctx.restore();
@@ -185,6 +246,41 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  class ShieldPickup {
+    constructor(logicalX, logicalY) {
+      this.logicalX = logicalX;
+      this.logicalY = logicalY;
+      this.width = 20;
+      this.height = 20;
+      this.rotation = 0;
+    }
+    update() {
+      this.logicalY += gameSpeed;
+      this.rotation -= 0.05;
+    }
+    draw() {
+      let visualX = this.logicalX + getCurveOffset(this.logicalY) + 10;
+      let visualY = this.logicalY + 10;
+
+      ctx.save();
+      ctx.translate(visualX, visualY);
+      ctx.scale(Math.sin(this.rotation), 1);
+
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = '#0088ff';
+      ctx.fillStyle = '#00ccff';
+      ctx.beginPath();
+      // Triangle/diamond path
+      ctx.moveTo(0, -10);
+      ctx.lineTo(10, 0);
+      ctx.lineTo(0, 10);
+      ctx.lineTo(-10, 0);
+      ctx.fill();
+
+      ctx.restore();
+    }
+  }
+
   class Particle {
     constructor(x, y, color) {
       this.x = x;
@@ -215,10 +311,40 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  class ExhaustParticle {
+    constructor(x, y, color) {
+      this.x = x;
+      this.y = y;
+      this.vx = (Math.random() - 0.5) * 1.5;
+      this.vy = Math.random() * 2 + gameSpeed * 0.5;
+      this.size = Math.random() * 3 + 1;
+      this.life = 0.6;
+      this.color = color;
+    }
+    update() {
+      this.x += this.vx;
+      this.y += this.vy;
+      this.life -= 0.04;
+    }
+    draw() {
+      ctx.globalAlpha = Math.max(0, this.life);
+      ctx.fillStyle = this.color;
+      ctx.shadowColor = this.color;
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = 0;
+    }
+  }
+
   let player;
   let enemies = [];
   let coins = [];
+  let shields = [];
   let particles = [];
+  let exhaustParticles = [];
   let lanes = [70, 160, 250, 340];
 
   function initGame() {
@@ -227,14 +353,46 @@ document.addEventListener('DOMContentLoaded', () => {
     player = new Car(canvas.width / 2 - 20, canvas.height - 100, 40, 70, '#00f0ff', true);
     enemies = [];
     particles = [];
+    exhaustParticles = [];
     coins = [];
+    shields = [];
 
     score = 0;
     coinsCount = 0;
-    gameSpeed = 6;
     frameCount = 0;
     roadOffset = 0;
     roadOffsetTotal = 0;
+    hasShield = false;
+
+    let baseSpeed = 6;
+    difficultySpeedIncrement = 0.5;
+    difficultySpawnRateMod = 1.0;
+
+    if (diffSelect) {
+      switch (diffSelect.value) {
+        case 'easy':
+          baseSpeed = 4;
+          difficultySpeedIncrement = 0.2;
+          difficultySpawnRateMod = 1.5;
+          break;
+        case 'normal':
+          baseSpeed = 6;
+          difficultySpeedIncrement = 0.5;
+          difficultySpawnRateMod = 1.0;
+          break;
+        case 'hard':
+          baseSpeed = 9;
+          difficultySpeedIncrement = 0.8;
+          difficultySpawnRateMod = 0.7;
+          break;
+        case 'extreme':
+          baseSpeed = 13;
+          difficultySpeedIncrement = 1.2;
+          difficultySpawnRateMod = 0.5;
+          break;
+      }
+    }
+    gameSpeed = baseSpeed;
 
     currentCurveAmp = 0;
     targetCurveAmp = 0;
@@ -276,10 +434,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const logicalY = -50;
 
     const isOverlapping = enemies.some(e => Math.abs(e.logicalX - (logicalX - 10)) < 40 && e.logicalY < 100) ||
-      coins.some(c => Math.abs(c.logicalX - logicalX) < 40 && c.logicalY < 100);
+      coins.some(c => Math.abs(c.logicalX - logicalX) < 40 && c.logicalY < 100) ||
+      shields.some(s => Math.abs(s.logicalX - logicalX) < 40 && s.logicalY < 100);
 
     if (!isOverlapping) {
       coins.push(new Coin(logicalX, logicalY));
+    }
+  }
+
+  function spawnShield() {
+    const lane = Math.floor(Math.random() * lanes.length);
+    const logicalX = lanes[lane] - 10;
+    const logicalY = -50;
+
+    const isOverlapping = enemies.some(e => Math.abs(e.logicalX - (logicalX - 10)) < 40 && e.logicalY < 100) ||
+      coins.some(c => Math.abs(c.logicalX - logicalX) < 40 && c.logicalY < 100) ||
+      shields.some(s => Math.abs(s.logicalX - logicalX) < 40 && s.logicalY < 100);
+
+    if (!isOverlapping && !hasShield && shields.length === 0) {
+      shields.push(new ShieldPickup(logicalX, logicalY));
     }
   }
 
@@ -411,21 +584,41 @@ document.addEventListener('DOMContentLoaded', () => {
       if (frameCount % 30 === 0) {
         score += 5;
         scoreEl.innerText = score;
+        bumpElement(scoreEl);
 
         if (gameSpeed < 20 && frameCount % 120 === 0) {
-          gameSpeed += 0.5;
+          gameSpeed += difficultySpeedIncrement;
           speedEl.innerText = (gameSpeed / 5).toFixed(1) + ' x';
+          bumpElement(speedEl);
+          playSpeedUpSound();
         }
       }
 
-      let spawnRate = Math.max(20, 70 - Math.floor(gameSpeed * 1.5));
+      let spawnRate = Math.max(10, Math.floor((70 - gameSpeed * 1.5) * difficultySpawnRateMod));
       if (frameCount % spawnRate === 0 && Math.random() > 0.1) {
         if (Math.random() > 0.3) {
-          spawnEnemy();
+           spawnEnemy();
+        } else if (Math.random() > 0.1) {
+           spawnCoin();
         } else {
-          spawnCoin();
+           spawnShield();
         }
       }
+
+      if (frameCount % 2 === 0) {
+        exhaustParticles.push(new ExhaustParticle(
+            player.logicalX + getCurveOffset(player.logicalY) + player.width / 2 + (Math.random() - 0.5) * 15,
+            player.logicalY + player.height - 5,
+            '#00f0ff'
+        ));
+      }
+    }
+
+    for (let i = exhaustParticles.length - 1; i >= 0; i--) {
+      let p = exhaustParticles[i];
+      if (!isGameOver) p.update();
+      p.draw();
+      if (p.life <= 0) exhaustParticles.splice(i, 1);
     }
 
     for (let i = coins.length - 1; i >= 0; i--) {
@@ -439,6 +632,8 @@ document.addEventListener('DOMContentLoaded', () => {
         score += 20;
         scoreEl.innerText = score;
         coinsEl.innerText = coinsCount;
+        bumpElement(scoreEl);
+        bumpElement(coinsEl);
         playCoinSound();
         continue;
       }
@@ -448,14 +643,50 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }
 
+    for (let i = shields.length - 1; i >= 0; i--) {
+      let s = shields[i];
+      if (!isGameOver) s.update();
+      s.draw();
+
+      if (!isGameOver && checkCoinCollision(player, s)) {
+        shields.splice(i, 1);
+        hasShield = true;
+        playShieldPickupSound();
+        continue;
+      }
+
+      if (s.logicalY > canvas.height) {
+        shields.splice(i, 1);
+      }
+    }
+
     for (let i = enemies.length - 1; i >= 0; i--) {
       let e = enemies[i];
       if (!isGameOver) e.update();
       e.draw();
 
       if (!isGameOver && checkCollision(player, e)) {
-        isGameOver = true;
-        createExplosion(player.logicalX + getCurveOffset(player.logicalY) + player.width / 2, player.logicalY + player.height / 2);
+        if (hasShield) {
+          hasShield = false;
+          playShieldBreakSound();
+          createExplosion(e.logicalX + getCurveOffset(e.logicalY) + e.width / 2, e.logicalY + e.height / 2);
+          enemies.splice(i, 1);
+          const gc = document.querySelector('.game-container');
+          if (gc) {
+            gc.classList.remove('shake');
+            void gc.offsetWidth;
+            gc.classList.add('shake');
+          }
+        } else {
+          isGameOver = true;
+          const gc = document.querySelector('.game-container');
+          if (gc) {
+            gc.classList.remove('shake');
+            void gc.offsetWidth;
+            gc.classList.add('shake');
+          }
+          createExplosion(player.logicalX + getCurveOffset(player.logicalY) + player.width / 2, player.logicalY + player.height / 2);
+        }
       }
 
       if (e.logicalY > canvas.height) {
@@ -463,6 +694,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isGameOver) {
           score += 10;
           scoreEl.innerText = score;
+          bumpElement(scoreEl);
         }
       }
     }
@@ -481,6 +713,14 @@ document.addEventListener('DOMContentLoaded', () => {
       if (allDead) {
         isPlaying = false;
         finalScoreEl.innerText = score;
+        if (score > highScore) {
+          highScore = score;
+          localStorage.setItem('neon_high_score', highScore);
+          if (highScoreEl && hiScoreBox) {
+            highScoreEl.innerText = highScore;
+            hiScoreBox.style.display = 'flex';
+          }
+        }
         gameOverScreen.classList.remove('hidden');
         return;
       }
