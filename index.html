@@ -20,6 +20,10 @@
           <span class="hud-label">SCORE</span>
           <span id="score" class="hud-value">0</span>
         </div>
+        <div class="hud-box" style="display:none;" id="hi-score-box">
+          <span class="hud-label">HI-SCORE</span>
+          <span id="high-score" class="hud-value">0</span>
+        </div>
         <div class="hud-box">
           <span class="hud-label">COINS</span>
           <span id="coins" class="hud-value">0</span>
@@ -36,6 +40,15 @@
       <div id="start-screen" class="overlay">
         <h2>READY TO RACE?</h2>
         <p>Dodge the traffic. Survive.</p>
+        <div class="difficulty-section">
+          <label for="difficulty">DIFFICULTY:</label>
+          <select id="difficulty">
+            <option value="easy">EASY</option>
+            <option value="normal" selected>NORMAL</option>
+            <option value="hard">HARD</option>
+            <option value="extreme">EXTREME</option>
+          </select>
+        </div>
         <button id="startBtn">START ENGINE</button>
       </div>
       <div id="game-over-screen" class="overlay hidden">
